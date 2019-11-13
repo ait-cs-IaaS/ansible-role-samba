@@ -1,5 +1,6 @@
 # BSD License
 
+Copyright (c) 2019, Maximilian Frank, (mail@frank-maximilian.at)
 Copyright (c) 2014, Bert Van Vreckem, (bert.vanvreckem@gmail.com)
 
 All rights reserved.
