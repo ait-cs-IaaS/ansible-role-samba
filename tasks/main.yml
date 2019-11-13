@@ -8,11 +8,48 @@
     - "os_{{ ansible_os_family }}.yml"
   tags: samba
 
+- name: Install build packages
+  package:
+    name: "{{ samba_build_packages }}"
+    state: present
+  tags: samba
+
+- name: Clone the samba repository
+  command: git clone -b {{ samba_git_tag }} --single-branch --depth 1 {{ samba_git }} {{ samba_install_dir }}
+  args:
+    creates: "{{ samba_install_dir }}"
+  tags: samba
+
+- name: Configure before making samba
+  command: ./configure {{ samba_configure_mandatory_options }} {{ samba_configure_options }}
+  args:
+    chdir: "{{ samba_install_dir }}"
+  changed_when: false
+
+- name: Make samba
+  make:
+    chdir: "{{ samba_install_dir }}"
+    params: "{{ samba_make_options | default(omit, true)}}"
+
+- name: Make install samba
+  make:
+    chdir: "{{ samba_install_dir }}"
+    target: install
+
 - name: Install Samba packages
   package:
     name: "{{ samba_packages }}"
     state: present
   tags: samba
+
+
+- name: Create systemd service defintions
+  copy:
+    src: "{{ item }}"
+    dest: /lib/systemd/system/{{ item }}
+  loop:
+    - smbd.service
+    - nmbd.service
 
 - name: Install Samba VFS extensions packages
   package:
