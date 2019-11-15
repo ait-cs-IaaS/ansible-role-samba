@@ -8,33 +8,93 @@
     - "os_{{ ansible_os_family }}.yml"
   tags: samba
 
+- name: Check current samba version
+  shell: >
+    set -o nounset -o pipefail -o errexit &&
+    smbd --version | sed 's/Version //' | grep -o -E '^(([0-9]*\.)*[0-9]*)'
+  args:
+    executable: /bin/bash
+  register: samba_version_check
+  changed_when: false
+  failed_when: false
+  tags: samba
+
+- name: Register samba version
+  set_fact:
+    samba_version: "{{ samba_version_check.stdout }}"
+  when: samba_version_check.stdout_lines|length
+
+- name: Identify installation state
+  set_fact:
+    samba_install: "{{ true if samba_version is not defined or (samba_install_version is defined and samba_install_version != samba_version) else false }}"
+    samba_reinstall: "{{ true if samba_version is defined and samba_install_version is defined and samba_install_version != samba_version else false }}"
+
+
+- name: "Installed Samba version:"
+  debug:
+    msg: "install: {{ samba_install }}"
+  tags: samba
+
 - name: Install build packages
   package:
     name: "{{ samba_build_packages }}"
     state: present
   tags: samba
 
+- name: Stop and disable samba services
+  systemd:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  when: samba_reinstall
+  loop: "{{ samba_services }}"
+
+- name: Uninstall old samba version
+  make:
+    chdir: "{{ samba_install_dir }}"
+    target: uninstall
+  when: samba_reinstall
+  tags: samba
+
+- name: Remove old git repository
+  file:
+    path: "{{ samba_install_dir }}"
+    state: absent
+  when: samba_reinstall
+  tags: samba
+
+- name: Select branch to clone
+  set_fact:
+    samba_clone_branch: "{{ samba_git_tag if samba_git_tag is defined else 'samba-'+samba_install_version if samba_install_version is defined else 'master' }}"
+
 - name: Clone the samba repository
-  command: git clone -b {{ samba_git_tag }} --single-branch --depth 1 {{ samba_git }} {{ samba_install_dir }}
+  command: git clone -b {{ samba_clone_branch }} --single-branch --depth 1 {{ samba_git }} {{ samba_install_dir }}
   args:
     creates: "{{ samba_install_dir }}"
+  when: samba_install
   tags: samba
 
 - name: Configure before making samba
   command: ./configure {{ samba_configure_mandatory_options }} {{ samba_configure_options }}
   args:
     chdir: "{{ samba_install_dir }}"
+  when: samba_install
   changed_when: false
+  tags: samba
 
 - name: Make samba
   make:
     chdir: "{{ samba_install_dir }}"
     params: "{{ samba_make_options | default(omit, true)}}"
+  when: samba_install 
+  tags: samba
 
 - name: Make install samba
   make:
     chdir: "{{ samba_install_dir }}"
     target: install
+  when: samba_install
+  tags: samba
 
 - name: Install Samba packages
   package:
@@ -47,9 +107,18 @@
   copy:
     src: "{{ item }}"
     dest: /lib/systemd/system/{{ item }}
+  register: samba_systemd_service_changes
   loop:
-    - smbd.service
     - nmbd.service
+    - smbd.service
+    
+- name: Reload service daemons
+  systemd:
+    name: "{{ item.item }}"
+    daemon_reload: yes
+    enabled: true
+  when: item.changed
+  loop: "{{ samba_systemd_service_changes.results }}"
 
 - name: Install Samba VFS extensions packages
   package:
@@ -61,12 +130,15 @@
 - name: Register Samba version
   shell: >
     set -o nounset -o pipefail -o errexit &&
-    smbd --version | sed 's/Version //'
+    smbd --version | sed 's/Version //' | grep -o -E '^(([0-9]*\.)*[0-9]*)'
   args:
     executable: /bin/bash
-  register: samba_version
+  register: samba_version_check
   changed_when: false
   tags: samba
+
+- set_fact:
+    samba_version: "{{ samba_version_check.stdout }}"
 
 # - name: "Installed Samba version:"
 #   debug:
@@ -108,22 +180,6 @@
     group: "{{ item.group|default('users') }}"
     mode: "{{ item.directory_mode|default('0775') }}"
     setype: "{{ item.setype|default('samba_share_t') }}"
-  tags: samba
-
-- name: Ensure webserver document root exists
-  file:
-    name: "{{ samba_www_documentroot }}"
-    state: directory
-  when: samba_create_varwww_symlinks|bool
-  tags: samba
-
-- name: Create link to shares in webserver document root
-  file:
-    state: link
-    path: "{{ samba_www_documentroot }}/{{ item.name }}"
-    src: "{{ item.path|default([samba_shares_root,item.name]|join('/')) }}"
-  with_items: "{{ samba_shares }}"
-  when: samba_create_varwww_symlinks|bool
   tags: samba
 
 - name: Samba configuration
@@ -176,7 +232,7 @@
   tags: samba
 
 - name: Start Samba service(s)
-  service:
+  systemd:
     name: "{{ item }}"
     state: started
     enabled: true

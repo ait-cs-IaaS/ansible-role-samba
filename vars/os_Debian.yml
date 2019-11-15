@@ -74,7 +74,8 @@ samba_username_map_file: "{{ samba_configuration_dir }}/smbusers"
 # The name of the Samba service in older releases (Ubuntu 14.04,
 # Debian <8) is "samba".
 samba_services:
-  - smbd
   - nmbd
+  - smbd
+  
 
 samba_www_documentroot: /var/www

@@ -4,12 +4,12 @@ Documentation=man:smbd(8) man:samba(7) man:smb.conf(5)
 After=network.target nmbd.service winbind.service
 
 [Service]
-Type=notify
+Type=simple
 NotifyAccess=all
 PIDFile=/var/run/samba/smbd.pid
 LimitNOFILE=16384
 EnvironmentFile=-/etc/default/samba
-ExecStart=/usr/local/bin/smbd --foreground --no-process-group $SMBDOPTIONS
+ExecStart=/usr/local/sbin/smbd --foreground --no-process-group $SMBDOPTIONS
 ExecReload=/bin/kill -HUP $MAINPID
 LimitCORE=infinity
 

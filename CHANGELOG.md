@@ -4,6 +4,10 @@ This file contains al notable changes to the bertvv.samba Ansible role.
 
 This file adheres to the guidelines of [http://keepachangelog.com/](http://keepachangelog.com/). Versioning follows [Semantic Versioning](http://semver.org/). "GH-X" refers to the X'th issue or pull request on the Github project.
 
+## 2.7.1a - 2019-11-15
+
+ - Install samba from git instead of package manager
+
 ## 2.7.1  - 2019-06-22
 
 ## Changed
