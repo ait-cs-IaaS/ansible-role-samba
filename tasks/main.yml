@@ -1,6 +1,12 @@
 # File: roles/samba/tasks/main.yml
 ---
 
+- name: Update apt repositories
+  apt:
+    update-cache: yes
+    force_apt_get: yes
+    cache_valid_time: 3600
+
 - name: Include OS specific variables
   include_vars: "{{ item }}"
   with_first_found:
