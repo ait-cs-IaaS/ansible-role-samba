@@ -75,9 +75,12 @@
     samba_clone_branch: "{{ samba_git_tag if samba_git_tag is defined else 'samba-'+samba_install_version if samba_install_version is defined else 'master' }}"
 
 - name: Clone the samba repository
-  command: git clone -b {{ samba_clone_branch }} --single-branch --depth 1 {{ samba_git }} {{ samba_install_dir }}
-  args:
-    creates: "{{ samba_install_dir }}"
+  git:
+    repo: "{{ samba_git }}"
+    dest: "{{ samba_install_dir }}"
+    version: "{{ samba_clone_branch }}"
+    single_branch: true
+    depth: 1
   when: samba_install
   tags: samba
 
@@ -92,8 +95,8 @@
 - name: Make samba
   make:
     chdir: "{{ samba_install_dir }}"
-    params: "{{ samba_make_options | default(omit, true)}}"
-  when: samba_install 
+    params: "{{ samba_make_options | default(omit, true) }}"
+  when: samba_install
   tags: samba
 
 - name: Make install samba
@@ -112,20 +115,18 @@
 
 - name: Create systemd service defintions
   copy:
-    src: "{{ item }}"
-    dest: /lib/systemd/system/{{ item }}
+    src: "{{ item }}.service"
+    dest: "/lib/systemd/system/{{ item }}.service"
+    mode: 0644
   register: samba_systemd_service_changes
-  loop:
-    - nmbd.service
-    - smbd.service
-    
+  with_items: "{{ samba_services }}"
+
 - name: Reload service daemons
   systemd:
-    name: "{{ item.item }}"
-    daemon_reload: yes
+    name: "{{ item }}"
+    daemon_reload: true
     enabled: true
-  when: item.changed
-  loop: "{{ samba_systemd_service_changes.results }}"
+  with_items: "{{ samba_services }}"
 
 - name: Install Samba VFS extensions packages
   package:
@@ -144,7 +145,8 @@
   changed_when: false
   tags: samba
 
-- set_fact:
+- name: samba version
+  set_fact:
     samba_version: "{{ samba_version_check.stdout }}"
 
 # - name: "Installed Samba version:"
@@ -194,6 +196,7 @@
     dest: "{{ samba_configuration }}"
     src: smb.conf.j2
     validate: 'testparm -s %s'
+    mode: 0644
   notify:
     - Restart Samba services
   tags: samba
@@ -203,6 +206,7 @@
     src: "{{ samba_global_include }}"
     dest: "{{ samba_configuration_dir }}"
     validate: 'testparm -s %s'
+    mode: 0644
   when: samba_global_include is defined
   notify:
     - Restart Samba services
@@ -213,6 +217,7 @@
     src: "{{ samba_homes_include }}"
     dest: "{{ samba_configuration_dir }}"
     validate: 'testparm -s %s'
+    mode: 0644
   when: samba_homes_include is defined
   notify:
     - Restart Samba services
@@ -223,6 +228,7 @@
     src: "{{ item.include_file }}"
     dest: "{{ samba_configuration_dir }}"
     validate: 'testparm -s %s'
+    mode: 0644
   when: item.include_file is defined
   notify:
     - Restart Samba services
@@ -233,6 +239,7 @@
   template:
     dest: "{{ samba_username_map_file }}"
     src: smbusers.j2
+    mode: 0644
   notify:
     - Restart Samba services
   when: samba_username_map is defined
